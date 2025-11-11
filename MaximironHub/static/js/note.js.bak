@@ -1,0 +1,207 @@
+/* Nickname modal and user handling */
+(function(){
+  // show modal on first visit
+  function setUser(name){
+    localStorage.setItem('maximironhub_nick', name);
+    document.getElementById('userName').textContent = name;
+    document.getElementById('userBlock').style.display = 'inline-block';
+  }
+  function askNickIfNeeded(){
+    const existing = localStorage.getItem('maximironhub_nick');
+    if(existing){
+      setUser(existing);
+      return;
+    }
+    // prompt modal
+    let nick = '';
+    while(!nick){
+      nick = prompt('Введите ваш ник (будет сохранён локально):');
+      if(nick===null){ nick='Гость'; break; }
+      nick = nick.trim();
+      if(!nick) alert('Ник обязателен'); 
+    }
+    setUser(nick || 'Гость');
+  }
+  document.addEventListener('DOMContentLoaded', askNickIfNeeded);
+})();
+
+/* enforce title required in form before upload */
+(function(){
+  document.addEventListener('DOMContentLoaded', ()=>{
+    const uploadForm = document.getElementById('uploadForm');
+    if(!uploadForm) return;
+    uploadForm.addEventListener('submit', (e)=>{
+      const title = document.getElementById('customName').value.trim();
+      if(!title){ e.preventDefault(); alert('Название обязательно'); return false; }
+    });
+  });
+})();
+
+// note.js - handles tilt, modal, theme toggle and client-side thumbnail generation
+(function(){
+  const root = document.documentElement;
+  const themeToggle = document.getElementById('themeToggle');
+  const fileInput = document.getElementById('fileInput');
+  const fileLabelText = document.getElementById('fileLabelText');
+  const uploadForm = document.getElementById('uploadForm');
+  const customName = document.getElementById('customName');
+
+  themeToggle.addEventListener('click', ()=>{
+    root.dataset.theme = root.dataset.theme === 'dark' ? 'light' : 'dark';
+  });
+
+  fileInput.addEventListener('change', (e)=>{
+    if(fileInput.files && fileInput.files[0]){
+      fileLabelText.textContent = fileInput.files[0].name;
+    } else {
+      fileLabelText.textContent = 'Выбрать файл';
+    }
+  });
+
+  uploadForm.addEventListener('submit', async function(ev){
+    ev.preventDefault();
+    const f = fileInput.files[0];
+    if(!f) return alert('Выберите файл');
+    const form = new FormData();
+    form.append('file', f);
+    const name = customName.value || '';
+    form.append('custom_name', name);
+
+    // If it's a video, try to generate thumbnail client-side
+    if(f.type.startsWith('video/')){
+      try{
+        const thumbBlob = await generateVideoThumbnail(f);
+        if(thumbBlob){
+          form.append('thumb', thumbBlob, f.name + '.jpg');
+        }
+      } catch(err){
+        console.warn('Thumbnail generation failed', err);
+      }
+    }
+    // send via fetch
+    const res = await fetch('/upload', {method:'POST', body: form});
+    if(res.redirected){
+      window.location.href = res.url;
+    } else {
+      window.location.reload();
+    }
+  });
+
+  // generate thumbnail by drawing first frame to canvas
+  function generateVideoThumbnail(file){
+    return new Promise((resolve, reject)=>{
+      const url = URL.createObjectURL(file);
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      video.muted = true;
+      video.src = url;
+      video.playsInline = true;
+      video.crossOrigin = 'anonymous';
+
+      const onLoaded = ()=>{
+        // seek to 0 (first frame)
+        video.currentTime = 0.05;
+      };
+      const onSeeked = ()=>{
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 360;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob((blob)=>{
+          URL.revokeObjectURL(url);
+          resolve(blob);
+        }, 'image/jpeg', 0.8);
+      };
+      video.addEventListener('loadeddata', onLoaded, {once:true});
+      video.addEventListener('seeked', onSeeked, {once:true});
+      video.addEventListener('error', (e)=>{ URL.revokeObjectURL(url); reject(e); });
+    });
+  }
+
+  // Tilt effect for cards (3D tilt)
+  function initTilt(){
+    const cards = document.querySelectorAll('.card.tilt');
+    cards.forEach(card => {
+      card.addEventListener('mousemove', handleMove);
+      card.addEventListener('mouseleave', handleLeave);
+      card.addEventListener('click', ()=>{
+        const file = card.dataset.fname;
+        openFile(file);
+      });
+    });
+  }
+  function handleMove(e){
+    const card = e.currentTarget;
+    const rect = card.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const cx = rect.width/2;
+    const cy = rect.height/2;
+    const dx = (x - cx) / cx;
+    const dy = (y - cy) / cy;
+    const tiltX = (dy) * 8;
+    const tiltY = (dx) * -12;
+    card.style.transform = `rotateX(${tiltX}deg) rotateY(${tiltY}deg) translateZ(6px)`;
+  }
+  function handleLeave(e){ e.currentTarget.style.transform = ''; }
+
+  // Modal open / close
+  const modal = document.getElementById('modal');
+  const modalContent = document.getElementById('modalContent');
+  const closeBtn = document.getElementById('closeModal');
+
+  document.addEventListener('DOMContentLoaded', ()=>{
+    initTilt();
+    document.querySelectorAll('.view').forEach(btn => {
+      btn.addEventListener('click', (ev)=>{
+        ev.stopPropagation();
+        const file = btn.dataset.file;
+        openFile(file);
+      });
+    });
+  });
+
+  function openFile(file){
+    modalContent.innerHTML = '';
+    const ext = file.split('.').pop().toLowerCase();
+    if(['mp4','webm','mov'].includes(ext)){
+      const v = document.createElement('video');
+      v.controls = true;
+      v.autoplay = true;
+      v.playsInline = true;
+      v.src = '/uploads/' + file;
+      v.style.width = '100%';
+      v.style.height = 'auto';
+      modalContent.appendChild(v);
+    } else {
+      const img = document.createElement('img');
+      img.className = 'modal-img';
+      img.src = '/uploads/' + file;
+      modalContent.appendChild(img);
+    }
+    modal.classList.add('open');
+        // pulse banner while modal open
+        try{ document.querySelector('.site-banner').style.transform='scale(1.01)'; }catch(e){}
+
+    setTimeout(()=>{ document.querySelector('.modal-card').classList.add('neon-glow'); }, 30);
+  }
+
+  closeBtn.addEventListener('click', ()=>{
+    modal.classList.remove('open');
+    document.querySelector('.modal-card').classList.remove('neon-glow');
+    modalContent.innerHTML = '';
+  });
+  document.addEventListener('keydown', (e)=>{ if(e.key==='Escape') closeBtn.click(); });
+modal.addEventListener('click', (e)=>{ if(e.target === modal) closeBtn.click(); });
+
+})();
+
+// Neon tail cursor
+let cg=document.createElement('div');
+cg.id='cursorGlow';
+document.body.appendChild(cg);
+window.addEventListener('mousemove',e=>{
+  cg.style.left=(e.clientX-11)+'px';
+  cg.style.top=(e.clientY-11)+'px';
+});

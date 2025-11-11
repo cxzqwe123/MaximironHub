@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="ru" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>MAXIMIRONHUB — Neon Gallery</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<div class="neon-rain"></div>
+<div class="shader-noise"></div>
+  <canvas id="particleCanvas" class="particle-canvas"></canvas>
+  <header class="site-header">
+    <div class="brand">
+      
+      <h1>MAXIMIRONHUB</h1>
+    </div>
+    <div class="controls">
+      <button id="themeToggle" class="btn outline">Сменить тему</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="upload-panel neon-card">
+          {% if request.args.get("error") %}
+            <div class="error">Название обязательно. Пожалуйста, укажите название.</div>
+          {% endif %}
+      <form id="uploadForm" action="/upload" method="post" enctype="multipart/form-data">
+        <div class="row">
+          <label class="file-label">
+            <input type="file" name="file" id="fileInput" required>
+            <span id="fileLabelText">Выбрать файл</span>
+          </label>
+          <input type="text" name="custom_name" id="customName" placeholder="Название (обязательно)" required class="title-input">
+          <button class="btn primary" type="submit">Загрузить</button>
+        </div>
+      </form>
+      <p class="hint">Поддерживается: jpg, png, mp4, webm, mov, gif. Максимум 600MB.</p>
+    </section>
+
+    <section class="gallery" id="gallery">
+      {% if files|length == 0 %}
+        <div class="empty">Галерея пуста — загрузите фото или видео</div>
+      {% else %}
+        {% for item in files %}
+          <article class="card tilt" data-fname="{{item.fn}}">
+            <div class="media-wrap">
+              {% if item.thumb %}
+                <img src="/{{item.thumb}}" alt="{{item.display}}">
+              {% else %}
+                {% if item.fn.endswith('.mp4') or item.fn.endswith('.mov') or item.fn.endswith('.webm') %}
+                  <div class="video-thumb">🎬</div>
+                {% else %}
+                  <img src="/uploads/{{item.fn}}" alt="{{item.display}}">
+                {% endif %}
+              {% endif %}
+            </div>
+            <div class="meta">
+              <div class="fname">{{item.display}}</div>
+              <div class="actions">
+                <button class="btn sm view" data-file="{{item.fn}}">Открыть</button>
+                <a class="btn sm ghost" href="/uploads/{{item.fn}}" target="_blank" download>Скачать</a>
+              </div>
+            </div>
+          </article>
+        {% endfor %}
+      {% endif %}
+    </section>
+  </main>
+
+  <!-- Modal -->
+  <div id="modal" class="modal">
+    <div class="modal-card neon-border">
+      <button id="closeModal" class="close">✕</button>
+      <div id="modalContent" class="modal-content"></div>
+    </div>
+  </div>
+
+  <script src="/static/js/particles.js"></script>
+<script src="/static/js/note.js"></script>
+</body>
+</html>
